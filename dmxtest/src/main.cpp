@@ -4,24 +4,24 @@
  * Handle DMX Channels: 1, 2, 3, 4, 5
  */
 
-// Konfigurasi Pin RS485 (ESP32)
+// RS485 Pin Configuration
 #define RXD2 16
 #define TXD2 17
-#define DMX_BAUD 243000 // Sesuai pembacaan osiloskop pada FT232RL
+#define DMX_BAUD 243000 // Based on Osciloscope reading for USB to RS485 (FT232RL) Waveshare
 
 // --- CONFIGURATION NODE 1 ---
-int startAddress = 6;         // Channel 1 di QLC+
+int startAddress = 1;         // Channel 1 di QLC+
 const int ledPins[] = {13, 12, 27, 26, 25}; 
 const int numPins = 5;
 
-// Parameter LEDC 16-bit
-#define LEDC_FREQ 1000        // Frekuensi aman untuk resolusi 16-bit
-#define LEDC_RES 12           // Resolusi 0-65535
+// LEDC 12bit
+#define LEDC_FREQ 2000         
+#define LEDC_RES 12           
 
 // Buffer & Smoothing
 uint8_t dmxBuffer[513];
 float smoothedValues[numPins]; 
-float filterFactor = 0.15;     // Menghilangkan langkah (stepping) fader
+float filterFactor = 0.15;     
 
 int channelIndex = 0;
 unsigned long lastByteTime = 0;
@@ -33,13 +33,10 @@ void updateLamps() {
     if (targetChannel < 513) {
       uint8_t raw8bit = dmxBuffer[targetChannel];
 
-      // Konversi 8-bit (0-255) ke 16-bit (0-65535) yang sempurna
-      uint32_t target12bit = (raw8bit << 4) | (raw8bit >> 4);
+       uint32_t target12bit = (raw8bit << 4) | (raw8bit >> 4);
 
-      // Filter EMA agar transisi sangat mulus (anti lompat)
       smoothedValues[i] = (filterFactor * target12bit) + ((1.0 - filterFactor) * smoothedValues[i]);
-
-      // Output ke PWM LEDC
+      
       ledcWrite(i, (uint32_t)smoothedValues[i]);
     }
   }
@@ -48,10 +45,10 @@ void updateLamps() {
 void updateLamps();
 
 void setup() {
-  // Serial Monitor untuk Debug
+  // Serial1 for debugging
   Serial.begin(115200);
-  
-  // Serial2 untuk menerima data dari MAX3485
+
+  // Serial2 for receive DMX512 Data
   Serial2.begin(DMX_BAUD, SERIAL_8N2, RXD2, TXD2);
 
   // Inisialisasi LEDC (API v2.x)
@@ -71,13 +68,13 @@ void loop() {
     uint8_t incomingByte = Serial2.read();
     unsigned long currentTime = micros();
 
-    // Reset paket jika ada jeda (Sync) > 2ms
+    // Packet Reset if delay > 2ms
     if (currentTime - lastByteTime > 2000) { 
       channelIndex = 0; 
     }
     lastByteTime = currentTime;
 
-    // Isi buffer paket DMX (0-512)
+    // DMX Buffer
     if (channelIndex < 513) {
       dmxBuffer[channelIndex] = incomingByte;
       channelIndex++;
